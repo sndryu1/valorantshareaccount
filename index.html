@@ -1,1 +1,477 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riot Account Manager (Online Shared)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
+<!-- Firebase SDKs -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+// --- Firebase Configuration (設定済み) ---
+const firebaseConfig = {
+apiKey: "AIzaSyAYbVIFDi0cZIV9nn7rPkb7LYoofTBapS4",
+authDomain: "valorant-share-account.firebaseapp.com",
+projectId: "valorant-share-account",
+storageBucket: "valorant-share-account.firebasestorage.app",
+messagingSenderId: "640981612350",
+appId: "1:640981612350:web:b133905917c6af7ff39e6f"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// --- 変数定義 (ここが重要です) ---
+// データの保存場所を決めるためのIDです。変更しないでください。
+const APP_ID = 'riot-account-manager';
+const COLLECTION_NAME = 'riot_accounts_shared';
+
+let currentUser = null;
+let accounts = [];
+
+// DOM Elements
+const accountListEl = document.getElementById('accountList');
+const searchInput = document.getElementById('searchInput');
+const loadingSpinner = document.getElementById('loadingSpinner');
+const emptyState = document.getElementById('emptyState');
+const modal = document.getElementById('modal');
+const form = document.getElementById('accountForm');
+
+// --- Authentication ---
+async function initAuth() {
+try {
+await signInAnonymously(auth);
+} catch (error) {
+console.error("Auth Error:", error);
+showToast("認証エラー: " + error.message, "error");
+}
+}
+
+// --- Firestore Realtime Listener ---
+function subscribeToData() {
+// データ保存パス: artifacts/riot-account-manager/public/data/riot_accounts_shared
+const colRef = collection(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME);
+
+// リアルタイム同期を開始
+onSnapshot(colRef, (snapshot) => {
+loadingSpinner.classList.add('hidden');
+
+accounts = [];
+snapshot.forEach((doc) => {
+accounts.push({ id: doc.id, ...doc.data() });
+});
+
+// 作成日時順（新しい順）に並べ替え
+accounts.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+renderAccounts(searchInput.value);
+}, (error) => {
+console.error("Data Fetch Error:", error);
+loadingSpinner.classList.add('hidden');
+// エラー内容によってメッセージを変える
+if (error.code === 'permission-denied') {
+showToast("権限エラー: Databaseルールを確認してください", "error");
+} else {
+showToast("データ取得エラー: " + error.code, "error");
+}
+});
+}
+
+// --- Auth State Observer ---
+onAuthStateChanged(auth, (user) => {
+if (user) {
+console.log("Logged in as:", user.uid);
+currentUser = user;
+subscribeToData();
+} else {
+currentUser = null;
+}
+});
+
+// Start Auth
+initAuth();
+
+// --- Data Operations ---
+window.handleFormSubmit = async (e) => {
+e.preventDefault();
+if (!currentUser) {
+showToast("ログインしていません", "error");
+return;
+}
+
+const name = document.getElementById('accName').value;
+const loginId = document.getElementById('accId').value;
+const pass = document.getElementById('accPass').value;
+const submitBtn = document.getElementById('submitBtn');
+
+if (!name || !loginId || !pass) return;
+
+try {
+submitBtn.disabled = true;
+submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 保存中...';
+
+// Firestoreに追加
+await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME), {
+name: name,
+loginId: loginId,
+password: pass,
+createdAt: serverTimestamp(),
+createdBy: currentUser.uid
+});
+
+closeModal();
+showToast('共有リストに追加しました', 'success');
+} catch (error) {
+console.error("Add Error:", error);
+showToast("追加失敗: " + error.code, "error");
+} finally {
+submitBtn.disabled = false;
+submitBtn.innerHTML = '保存して共有';
+}
+};
+
+window.deleteAccount = async (docId) => {
+if (!currentUser) return;
+
+if(confirm('このアカウントを共有リストから削除しますか？\n（他のユーザーからも消えます）')) {
+try {
+await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME, docId));
+showToast('削除しました', 'success');
+} catch (error) {
+console.error("Delete Error:", error);
+showToast("削除失敗: " + error.code, "error");
+}
+}
+};
+
+// --- Rendering ---
+window.renderAccounts = (filterText = '') => {
+accountListEl.innerHTML = '';
+
+const filteredAccounts = accounts.filter(acc =>
+acc.name.toLowerCase().includes(filterText.toLowerCase())
+);
+
+if (filteredAccounts.length === 0) {
+if(accounts.length === 0) {
+// データ自体がない
+emptyState.innerHTML = `
+<i class="fa-solid fa-cloud-arrow-up text-4xl mb-3"></i>
+<p>共有アカウントがありません。<br>右上のボタンから追加してください。</p>
+`;
+} else {
+// 検索結果がない
+emptyState.innerHTML = `
+<i class="fa-solid fa-search text-4xl mb-3"></i>
+<p>一致するアカウントが見つかりません</p>
+`;
+}
+emptyState.classList.remove('hidden');
+} else {
+emptyState.classList.add('hidden');
+
+filteredAccounts.forEach((acc) => {
+const card = document.createElement('div');
+card.className = 'bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between shadow-md hover:border-gray-500 transition-all fade-in gap-4 group relative overflow-hidden';
+
+// 背景の装飾
+const bgDecoration = document.createElement('div');
+bgDecoration.className = 'absolute top-0 right-0 w-24 h-24 bg-red-600 opacity-5 rounded-full blur-2xl transform translate-x-10 -translate-y-10 pointer-events-none';
+card.appendChild(bgDecoration);
+
+card.innerHTML += `
+<div class="flex items-center gap-4 w-full sm:w-auto z-10 overflow-hidden">
+<div class="w-10 h-10 rounded-full bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center shrink-0 shadow-inner text-white">
+<span class="font-bold text-lg">${acc.name.charAt(0).toUpperCase()}</span>
+</div>
+<div class="flex flex-col min-w-0">
+<h3 class="font-bold text-lg truncate pr-2 text-white">${escapeHtml(acc.name)}</h3>
+<div class="flex items-center gap-2 text-xs text-gray-400 font-mono">
+<span class="bg-gray-900 px-1.5 py-0.5 rounded border border-gray-700">ID: ${maskString(acc.loginId)}</span>
+</div>
+</div>
+</div>
+
+<div class="flex items-center gap-2 w-full sm:w-auto justify-end z-10">
+<!-- Copy ID Button -->
+<button onclick="copyToClipboard('${escapeJs(acc.loginId)}', 'ログインIDをコピーしました')"
+class="flex-1 sm:flex-none bg-gray-700 hover:bg-gray-600 hover:text-white text-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 border border-gray-600 hover:border-gray-500 shadow-sm" title="IDをコピー">
+<i class="fa-regular fa-user"></i> <span class="font-mono">ID</span>
+</button>
+
+<!-- Copy Pass Button -->
+<button onclick="copyToClipboard('${escapeJs(acc.password)}', 'パスワードをコピーしました')"
+class="flex-1 sm:flex-none bg-gray-700 hover:bg-gray-600 hover:text-white text-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 border border-gray-600 hover:border-gray-500 shadow-sm" title="パスワードをコピー">
+<i class="fa-solid fa-key"></i> <span class="font-mono">PASS</span>
+</button>
+
+<!-- Delete Button -->
+<button onclick="deleteAccount('${acc.id}')"
+class="ml-2 w-8 h-8 flex items-center justify-center rounded-full text-gray-500 hover:text-red-500 hover:bg-gray-700/50 transition-colors" title="共有から削除">
+<i class="fa-solid fa-trash"></i>
+</button>
+</div>
+`;
+accountListEl.appendChild(card);
+});
+}
+}
+
+// Search Listener
+searchInput.addEventListener('input', (e) => {
+renderAccounts(e.target.value);
+});
+
+// --- Helper Functions ---
+window.openModal = () => {
+modal.classList.remove('hidden');
+setTimeout(() => document.getElementById('accName').focus(), 100);
+}
+
+window.closeModal = () => {
+modal.classList.add('hidden');
+form.reset();
+}
+
+window.copyToClipboard = async (text, message) => {
+try {
+if (navigator.clipboard && window.isSecureContext) {
+await navigator.clipboard.writeText(text);
+} else {
+const textArea = document.createElement("textarea");
+textArea.value = text;
+textArea.style.position = "fixed";
+textArea.style.left = "-9999px";
+document.body.appendChild(textArea);
+textArea.focus();
+textArea.select();
+document.execCommand('copy');
+document.body.removeChild(textArea);
+}
+showToast(message);
+} catch (err) {
+console.error('Failed to copy: ', err);
+showToast('コピーに失敗しました', 'error');
+}
+}
+
+window.showToast = (message, type = 'success') => {
+const toastEl = document.getElementById('toast');
+const msgEl = document.getElementById('toastMessage');
+const icon = toastEl.querySelector('i');
+const borderEl = document.getElementById('toastBorder');
+
+msgEl.textContent = message;
+
+if (type === 'error') {
+borderEl.className = 'absolute inset-0 border border-yellow-500 rounded-full animate-pulse';
+icon.className = 'fa-solid fa-circle-exclamation text-yellow-500';
+} else {
+borderEl.className = 'absolute inset-0 border border-red-500 rounded-full';
+icon.className = 'fa-solid fa-circle-check text-green-400';
+}
+
+toastEl.style.opacity = '1';
+toastEl.style.transform = 'translate(-50%, 0)';
+
+setTimeout(() => {
+toastEl.style.opacity = '0';
+toastEl.style.transform = 'translate(-50%, 20px)';
+}, 2500);
+}
+
+window.togglePasswordVisibility = (id) => {
+const input = document.getElementById(id);
+const icon = input.nextElementSibling.querySelector('i');
+if (input.type === 'password') {
+input.type = 'text';
+icon.classList.remove('fa-eye');
+icon.classList.add('fa-eye-slash');
+} else {
+input.type = 'password';
+icon.classList.remove('fa-eye-slash');
+icon.classList.add('fa-eye');
+}
+}
+
+function maskString(str) {
+if (!str) return '';
+if (str.length <= 2) return '*'.repeat(str.length);
+return str.substring(0, 2) + '*'.repeat(Math.min(str.length - 2, 8));
+}
+
+function escapeHtml(text) {
+if (!text) return '';
+const map = {
+'&': '&amp;',
+'<': '&lt;',
+'>': '&gt;',
+'"': '&quot;',
+"'": '&#039;'
+};
+return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
+function escapeJs(text) {
+if (!text) return '';
+return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// Close modal on outside click
+modal.addEventListener('click', (e) => {
+if (e.target === modal) closeModal();
+});
+
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap');
+body {
+font-family: 'Inter', sans-serif;
+background-color: #0f1923; /* Valorant/Riot dark theme */
+background-image:
+radial-gradient(circle at 10% 20%, rgba(220, 38, 38, 0.05) 0%, transparent 20%),
+radial-gradient(circle at 90% 80%, rgba(220, 38, 38, 0.05) 0%, transparent 20%);
+}
+.riot-red {
+background-color: #d92837;
+}
+.riot-red:hover {
+background-color: #b01e2b;
+}
+/* Scrollbar customization */
+::-webkit-scrollbar {
+width: 8px;
+}
+::-webkit-scrollbar-track {
+background: #1f2937;
+}
+::-webkit-scrollbar-thumb {
+background: #4b5563;
+border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+background: #6b7280;
+}
+.fade-in {
+animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes fadeIn {
+from { opacity: 0; transform: translateY(10px) scale(0.98); }
+to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.font-mono {
+font-family: 'JetBrains Mono', monospace;
+}
+</style>
+</head>
+<body class="text-gray-100 min-h-screen flex flex-col items-center py-10 px-4">
+
+<!-- Header -->
+<div class="w-full max-w-2xl mb-8 text-center relative">
+<div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-full mb-4">
+<span class="bg-red-900/30 text-red-400 text-xs px-2 py-1 rounded border border-red-900/50">
+<i class="fa-solid fa-globe"></i> ONLINE SHARED
+</span>
+</div>
+<h1 class="text-4xl font-bold mb-2 flex justify-center items-center gap-3 tracking-tight">
+<span class="text-red-500 text-5xl leading-none">V</span>
+Riot Account Manager
+</h1>
+<p class="text-gray-400 text-sm">クラウド同期・チーム共有対応版</p>
+</div>
+
+<!-- Controls: Search & Add -->
+<div class="w-full max-w-2xl flex flex-col sm:flex-row gap-4 mb-8">
+<div class="relative flex-grow">
+<i class="fa-solid fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+<input type="text" id="searchInput" placeholder="アカウント名を検索..."
+class="w-full bg-gray-800/80 border border-gray-700 text-white pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:border-red-500 transition-all shadow-lg backdrop-blur-sm">
+</div>
+<button onclick="openModal()"
+class="riot-red text-white px-6 py-3 rounded-lg font-bold shadow-lg transition-transform transform hover:scale-105 flex items-center justify-center gap-2 whitespace-nowrap active:scale-95">
+<i class="fa-solid fa-plus"></i> <span class="hidden sm:inline">共有アカウント</span>追加
+</button>
+</div>
+
+<!-- Loading State -->
+<div id="loadingSpinner" class="w-full max-w-2xl flex justify-center py-12">
+<i class="fa-solid fa-spinner fa-spin text-4xl text-red-500"></i>
+</div>
+
+<!-- Account List -->
+<div id="accountList" class="w-full max-w-2xl space-y-3 pb-20">
+<!-- Accounts will be injected here via JS -->
+</div>
+
+<!-- Empty State (Hidden by default) -->
+<div id="emptyState" class="hidden w-full max-w-2xl text-center py-12 text-gray-600 border-2 border-dashed border-gray-800 rounded-xl">
+<!-- Content injected by JS -->
+</div>
+
+<!-- Add Modal -->
+<div id="modal" class="fixed inset-0 bg-black/80 hidden flex items-center justify-center z-50 backdrop-blur-sm transition-all duration-300 p-4">
+<div class="bg-gray-900 border border-gray-700 p-8 rounded-xl shadow-2xl w-full max-w-md transform transition-all scale-100 relative overflow-hidden">
+<!-- Modal Background Decor -->
+<div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 to-red-900"></div>
+
+<button onclick="closeModal()" class="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors">
+<i class="fa-solid fa-xmark text-xl"></i>
+</button>
+
+<h2 class="text-2xl font-bold mb-2 text-center text-white">アカウント共有</h2>
+<p class="text-center text-xs text-red-400 mb-6 bg-red-900/20 py-2 rounded border border-red-900/30">
+<i class="fa-solid fa-triangle-exclamation mr-1"></i> 注意: 全ユーザーに公開されます
+</p>
+
+<form id="accountForm" onsubmit="handleFormSubmit(event)">
+<div class="mb-4">
+<label class="block text-gray-400 text-xs font-bold mb-2 uppercase tracking-wider">アカウント名 (表示名)</label>
+<input type="text" id="accName" required placeholder="例: Main, Smurf Valo"
+class="w-full bg-gray-800 border border-gray-700 rounded p-3 focus:outline-none focus:border-red-500 focus:bg-gray-800/80 transition-all text-white placeholder-gray-600">
+</div>
+
+<div class="mb-4">
+<label class="block text-gray-400 text-xs font-bold mb-2 uppercase tracking-wider">ログインID</label>
+<input type="text" id="accId" required placeholder="ユーザー名"
+class="w-full bg-gray-800 border border-gray-700 rounded p-3 focus:outline-none focus:border-red-500 focus:bg-gray-800/80 transition-all text-white placeholder-gray-600 font-mono">
+</div>
+
+<div class="mb-8">
+<label class="block text-gray-400 text-xs font-bold mb-2 uppercase tracking-wider">パスワード</label>
+<div class="relative">
+<input type="password" id="accPass" required placeholder="パスワード"
+class="w-full bg-gray-800 border border-gray-700 rounded p-3 pr-10 focus:outline-none focus:border-red-500 focus:bg-gray-800/80 transition-all text-white placeholder-gray-600 font-mono">
+<button type="button" onclick="togglePasswordVisibility('accPass')" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
+<i class="fa-solid fa-eye"></i>
+</button>
+</div>
+</div>
+
+<div class="flex gap-3">
+<button type="button" onclick="closeModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-lg font-bold transition-colors border border-gray-700">
+キャンセル
+</button>
+<button type="submit" id="submitBtn" class="flex-1 riot-red text-white py-3 rounded-lg font-bold shadow-lg transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+保存して共有
+</button>
+</div>
+</form>
+</div>
+</div>
+
+<!-- Toast Notification -->
+<div id="toast" class="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 opacity-0 transition-all duration-300 pointer-events-none z-50 whitespace-nowrap">
+<div id="toastBorder"></div>
+<i class="fa-solid fa-circle-check text-green-400 z-10"></i>
+<span id="toastMessage" class="font-medium z-10">コピーしました！</span>
+</div>
+
+</body>
+</html>
