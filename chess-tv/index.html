@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess TV</title>
+<style>
+:root{--bg:#0f1115;--panel:#1a1d24;--fg:#e8e8e8;--accent:#e5b93c;--light:#f0d9b5;--dark:#b58863;--hl:rgba(229,185,60,.55)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif}
+header{padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #2a2e38}
+header h1{margin:0;font-size:20px}
+.live{background:#d33;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;animation:blink 1.4s infinite}
+@keyframes blink{50%{opacity:.5}}
+main{display:flex;flex-wrap:wrap;gap:16px;padding:16px;max-width:1000px;margin:auto}
+#board{width:min(92vw,560px);aspect-ratio:1;display:grid;grid-template-columns:repeat(8,1fr);border:4px solid #333}
+.sq{display:flex;align-items:center;justify-content:center;font-size:min(8vw,52px);line-height:1;user-select:none}
+.sq.l{background:var(--light)}.sq.d{background:var(--dark)}.sq.hl{box-shadow:inset 0 0 0 100px var(--hl)}
+.w{color:#fff;text-shadow:0 0 2px #000,0 0 2px #000,0 0 2px #000}.b{color:#111}
+aside{flex:1;min-width:260px;background:var(--panel);border-radius:10px;padding:14px}
+select,button{background:#262a33;color:var(--fg);border:1px solid #3a3f4b;border-radius:6px;padding:8px 12px;font-size:15px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+.ctl{display:flex;gap:6px;margin:12px 0;flex-wrap:wrap;align-items:center}
+#moves{display:grid;grid-template-columns:36px 1fr 1fr;gap:2px 8px;max-height:260px;overflow:auto;font-size:14px}
+#moves span.cur{background:var(--accent);color:#000;border-radius:3px;padding:0 4px}
+#moves span{cursor:pointer;padding:0 4px}.num{color:#888}
+#info{color:#aaa;font-size:14px;margin:6px 0}
+#status{color:var(--accent);font-weight:600;min-height:1.4em}
+</style>
+</head>
+<body>
+<header><h1>♞ Chess TV</h1><span class="live">LIVE</span></header>
+<main>
+  <div id="board"></div>
+  <aside>
+    <select id="game"></select>
+    <div id="info"></div>
+    <div class="ctl">
+      <button id="first">⏮</button><button id="prev">◀</button>
+      <button id="play">⏸</button>
+      <button id="next">▶</button><button id="last">⏭</button>
+      <label>速度 <select id="speed"><option value="2000">遅い</option><option value="1200" selected>普通</option><option value="500">速い</option></select></label>
+    </div>
+    <div id="status"></div>
+    <div id="moves"></div>
+  </aside>
+</main>
+<script>
+const GAMES=[
+{title:"オペラ座の戦い",info:"Morphy vs Duke of Brunswick & Count Isouard, Paris 1858",
+ m:"e2e4 e7e5 g1f3 d7d6 d2d4 c8g4 d4e5 g4f3 d1f3 d6e5 f1c4 g8f6 f3b3 d8e7 b1c3 c7c6 c1g5 b7b5 c3b5 c6b5 c4b5 b8d7 e1c1 a8d8 d1d7 d8d7 h1d1 e7e6 b5d7 f6d7 b3b8 d7b8 d1d8"},
+{title:"不滅の対局",info:"Anderssen vs Kieseritzky, London 1851",
+ m:"e2e4 e7e5 f2f4 e5f4 f1c4 d8h4 e1f1 b7b5 c4b5 g8f6 g1f3 h4h6 d2d3 f6h5 f3h4 h6g5 h4f5 c7c6 g2g4 h5f6 h1g1 c6b5 h2h4 g5g6 h4h5 g6g5 d1f3 f6g8 c1f4 g5f6 b1c3 f8c5 c3d5 f6b2 f4d6 c5g1 e4e5 b2a1 f1e2 b8a6 f5g7 e8d8 f3f6 g8f6 d6e7"}
+];
+const START="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
+const GLYPH={K:"♚",Q:"♛",R:"♜",B:"♝",N:"♞",P:"♟"};
+const sqi=s=>(8-+s[1])*8+"abcdefgh".indexOf(s[0]);
+function initial(){const b=[];for(const r of START.split("/"))for(const c of r)if(/\d/.test(c))for(let i=0;i<+c;i++)b.push(null);else b.push(c);return b}
+// 各手後の局面と指し手をあらかじめ計算
+function build(game){
+  const mv=game.m.split(" "),states=[initial()],hl=[null];let b=states[0];
+  for(const m of mv){
+    b=b.slice();const f=sqi(m.slice(0,2)),t=sqi(m.slice(2,4)),p=b[f];
+    if(p.toUpperCase()==="K"&&Math.abs(f-t)===2){const row=f-f%8;const rk=t>f?row+7:row,rt=t>f?t-1:t+1;b[rt]=b[rk];b[rk]=null}
+    if(p.toUpperCase()==="P"&&f%8!==t%8&&!b[t])b[f-f%8+t%8]=null;
+    b[t]=p;b[f]=null;
+    if(p.toUpperCase()==="P"&&(t<8||t>55))b[t]=p===p.toUpperCase()?"Q":"q";
+    states.push(b);hl.push([f,t]);
+  }
+  return{mv,states,hl};
+}
+let G,cur=0,timer=null,playing=true;
+const $=id=>document.getElementById(id);
+function render(){
+  const bd=$("board");bd.innerHTML="";
+  G.states[cur].forEach((p,i)=>{
+    const d=document.createElement("div");
+    d.className="sq "+(((i>>3)+i)%2?"d":"l")+(G.hl[cur]&&G.hl[cur].includes(i)?" hl":"");
+    if(p){d.textContent=GLYPH[p.toUpperCase()];d.classList.add(p===p.toUpperCase()?"w":"b")}
+    bd.appendChild(d);
+  });
+  document.querySelectorAll("#moves span[data-i]").forEach(s=>s.classList.toggle("cur",+s.dataset.i===cur));
+  const c=document.querySelector("#moves .cur");if(c)c.scrollIntoView({block:"nearest"});
+  $("status").textContent=cur===G.mv.length?"終局":cur===0?"開始局面":`${Math.ceil(cur/2)}手目 ${cur%2?"白":"黒"}`;
+}
+function load(i){
+  stop();G=build(GAMES[i]);cur=0;$("info").textContent=GAMES[i].info;
+  const m=$("moves");m.innerHTML="";
+  G.mv.forEach((x,k)=>{
+    if(k%2===0){const n=document.createElement("span");n.className="num";n.textContent=k/2+1+".";m.appendChild(n)}
+    const s=document.createElement("span");s.dataset.i=k+1;s.textContent=x;s.onclick=()=>{stop();cur=k+1;render()};m.appendChild(s);
+  });
+  render();if(playing)start();
+}
+function step(d){cur=Math.max(0,Math.min(G.mv.length,cur+d));render()}
+function start(){stop();playing=true;$("play").textContent="⏸";timer=setInterval(()=>{if(cur>=G.mv.length){const n=($("game").selectedIndex+1)%GAMES.length;$("game").selectedIndex=n;load(n)}else step(1)},+$("speed").value)}
+function stop(){clearInterval(timer);timer=null;$("play").textContent="▶️"}
+GAMES.forEach((g,i)=>$("game").add(new Option(g.title,i)));
+$("game").onchange=e=>load(+e.target.value);
+$("speed").onchange=()=>{if(timer)start()};
+$("play").onclick=()=>{timer?(stop(),playing=false):start()};
+$("first").onclick=()=>{stop();playing=false;cur=0;render()};
+$("last").onclick=()=>{stop();playing=false;cur=G.mv.length;render()};
+$("prev").onclick=()=>{stop();playing=false;step(-1)};
+$("next").onclick=()=>{stop();playing=false;step(1)};
+load(0);
+</script>
+</body>
+</html>
