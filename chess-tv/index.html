@@ -5,105 +5,285 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chess TV</title>
 <style>
-:root{--bg:#0f1115;--panel:#1a1d24;--fg:#e8e8e8;--accent:#e5b93c;--light:#f0d9b5;--dark:#b58863;--hl:rgba(229,185,60,.55)}
+:root{--bg:#0f1115;--panel:#1a1d24;--fg:#e8e8e8;--muted:#8d93a0;--accent:#e5b93c;--light:#f0d9b5;--dark:#b58863}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif}
 header{padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #2a2e38}
 header h1{margin:0;font-size:20px}
 .live{background:#d33;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;animation:blink 1.4s infinite}
+.live.off{background:#555;animation:none}
 @keyframes blink{50%{opacity:.5}}
-main{display:flex;flex-wrap:wrap;gap:16px;padding:16px;max-width:1000px;margin:auto}
-#board{width:min(92vw,560px);aspect-ratio:1;display:grid;grid-template-columns:repeat(8,1fr);border:4px solid #333}
-.sq{display:flex;align-items:center;justify-content:center;font-size:min(8vw,52px);line-height:1;user-select:none}
-.sq.l{background:var(--light)}.sq.d{background:var(--dark)}.sq.hl{box-shadow:inset 0 0 0 100px var(--hl)}
+main{display:flex;flex-wrap:wrap;gap:16px;padding:16px;max-width:1100px;margin:auto}
+.left{width:min(94vw,600px)}
+.boardwrap{display:flex;gap:6px}
+#bar{width:18px;background:#222;border:1px solid #444;position:relative;border-radius:3px;overflow:hidden;flex:none}
+#barw{position:absolute;left:0;right:0;bottom:0;background:#f4f4f4;transition:height .3s}
+#board{flex:1;aspect-ratio:1;display:grid;grid-template-columns:repeat(8,1fr);border:3px solid #333}
+.sq{position:relative;display:flex;align-items:center;justify-content:center;font-size:min(7.5vw,48px);line-height:1;user-select:none}
+.sq.l{background:var(--light)}.sq.d{background:var(--dark)}
+.sq.hl::before{content:"";position:absolute;inset:0;background:rgba(229,185,60,.5)}
+.sq.bm::before{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 4px #3bb273}
+.sq span.p{position:relative}
 .w{color:#fff;text-shadow:0 0 2px #000,0 0 2px #000,0 0 2px #000}.b{color:#111}
-aside{flex:1;min-width:260px;background:var(--panel);border-radius:10px;padding:14px}
-select,button{background:#262a33;color:var(--fg);border:1px solid #3a3f4b;border-radius:6px;padding:8px 12px;font-size:15px;cursor:pointer}
-button:hover{border-color:var(--accent)}
-.ctl{display:flex;gap:6px;margin:12px 0;flex-wrap:wrap;align-items:center}
-#moves{display:grid;grid-template-columns:36px 1fr 1fr;gap:2px 8px;max-height:260px;overflow:auto;font-size:14px}
-#moves span.cur{background:var(--accent);color:#000;border-radius:3px;padding:0 4px}
-#moves span{cursor:pointer;padding:0 4px}.num{color:#888}
-#info{color:#aaa;font-size:14px;margin:6px 0}
-#status{color:var(--accent);font-weight:600;min-height:1.4em}
+.badge{position:absolute;top:-2px;right:-2px;z-index:2;min-width:20px;height:20px;border-radius:10px;font:700 11px/20px system-ui;text-align:center;color:#fff;padding:0 4px}
+.k-brilliant{background:#1bc7b4}.k-great{background:#5c8bb0}.k-best{background:#7fa650}.k-excellent{background:#7fa650}.k-good{background:#95a07a}
+.k-inaccuracy{background:#e5a93c}.k-mistake{background:#e58f2a}.k-blunder{background:#d33}
+.player{display:flex;justify-content:space-between;padding:6px 4px;font-size:15px}
+.player .t{color:#e5b93c;font-weight:700;margin-right:4px}
+.player .r{color:var(--muted)}
+aside{flex:1;min-width:280px;background:var(--panel);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
+select,button{background:#262a33;color:var(--fg);border:1px solid #3a3f4b;border-radius:6px;padding:7px 11px;font-size:14px;cursor:pointer}
+button:hover,button.on{border-color:var(--accent)}
+button.on{color:var(--accent)}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chan button{font-size:13px}
+#info{color:var(--muted);font-size:13px}
+#coach{background:#12151b;border-left:4px solid #444;padding:10px;border-radius:6px;font-size:14px;line-height:1.5;min-height:74px}
+#coach b.k{padding:1px 8px;border-radius:10px;color:#fff;margin-right:6px}
+#moves{display:grid;grid-template-columns:34px 1fr 1fr;gap:2px 6px;max-height:230px;overflow:auto;font-size:14px;align-content:start}
+#moves .m{cursor:pointer;padding:1px 5px;border-radius:3px}
+#moves .m.cur{background:var(--accent);color:#000}
+#moves .num{color:var(--muted)}
+.s-brilliant{color:#1bc7b4}.s-great{color:#6fa3cf}.s-inaccuracy{color:#e5a93c}.s-mistake{color:#e58f2a}.s-blunder{color:#f55}
+.cur .sy{color:#000!important}
+#acc{display:flex;gap:16px;font-size:13px;color:var(--muted)}
+#acc b{color:var(--fg);font-size:16px}
+#graph{width:100%;height:70px;background:#12151b;border-radius:6px;cursor:pointer}
+#status{font-size:12px;color:var(--muted)}
 </style>
 </head>
 <body>
-<header><h1>♞ Chess TV</h1><span class="live">LIVE</span></header>
+<header><h1>♞ Chess TV</h1><span id="live" class="live">LIVE</span><span id="status"></span></header>
 <main>
-  <div id="board"></div>
+  <div class="left">
+    <div class="player" id="ptop"></div>
+    <div class="boardwrap"><div id="bar"><div id="barw" style="height:50%"></div></div><div id="board"></div></div>
+    <div class="player" id="pbot"></div>
+  </div>
   <aside>
-    <select id="game"></select>
+    <div class="row chan" id="chan"></div>
+    <div class="row"><select id="classic"></select><span style="color:var(--muted);font-size:12px">← 名局を見る</span></div>
     <div id="info"></div>
-    <div class="ctl">
-      <button id="first">⏮</button><button id="prev">◀</button>
-      <button id="play">⏸</button>
-      <button id="next">▶</button><button id="last">⏭</button>
-      <label>速度 <select id="speed"><option value="2000">遅い</option><option value="1200" selected>普通</option><option value="500">速い</option></select></label>
+    <div class="row">
+      <button id="first">⏮</button><button id="prev">◀</button><button id="next">▶</button><button id="last">⏭</button>
+      <button id="golive">● ライブへ</button>
+      <label style="font-size:13px">解析 <select id="depth"><option value="8">速い</option><option value="11" selected>標準</option><option value="14">深い</option></select></label>
     </div>
-    <div id="status"></div>
+    <div id="coach">局面を選ぶと、ここに手の評価と解説が出ます。</div>
+    <div id="acc"></div>
+    <svg id="graph" viewBox="0 0 400 70" preserveAspectRatio="none"></svg>
     <div id="moves"></div>
   </aside>
 </main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script src="analysis.js"></script>
 <script>
-const GAMES=[
-{title:"オペラ座の戦い",info:"Morphy vs Duke of Brunswick & Count Isouard, Paris 1858",
- m:"e2e4 e7e5 g1f3 d7d6 d2d4 c8g4 d4e5 g4f3 d1f3 d6e5 f1c4 g8f6 f3b3 d8e7 b1c3 c7c6 c1g5 b7b5 c3b5 c6b5 c4b5 b8d7 e1c1 a8d8 d1d7 d8d7 h1d1 e7e6 b5d7 f6d7 b3b8 d7b8 d1d8"},
-{title:"不滅の対局",info:"Anderssen vs Kieseritzky, London 1851",
- m:"e2e4 e7e5 f2f4 e5f4 f1c4 d8h4 e1f1 b7b5 c4b5 g8f6 g1f3 h4h6 d2d3 f6h5 f3h4 h6g5 h4f5 c7c6 g2g4 h5f6 h1g1 c6b5 h2h4 g5g6 h4h5 g6g5 d1f3 f6g8 c1f4 g5f6 b1c3 f8c5 c3d5 f6b2 f4d6 c5g1 e4e5 b2a1 f1e2 b8a6 f5g7 e8d8 f3f6 g8f6 d6e7"}
+const A = ChessAnalysis, $ = id => document.getElementById(id);
+const LI = 'https://lichess.org';
+const SF_URL = 'https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js';
+const CHANNELS = [['Top Rated','トップレート(GM級)'],['Bot','AI対決(Bot同士)'],['Blitz','ブリッツ'],['Rapid','ラピッド'],['Classical','クラシカル'],['Bullet','ブレット']];
+const CLASSICS = [
+ {title:'オペラ座の戦い',info:'Morphy vs Duke of Brunswick & Count Isouard, 1858',w:'Paul Morphy',b:'Duke & Count',
+  u:'e2e4 e7e5 g1f3 d7d6 d2d4 c8g4 d4e5 g4f3 d1f3 d6e5 f1c4 g8f6 f3b3 d8e7 b1c3 c7c6 c1g5 b7b5 c3b5 c6b5 c4b5 b8d7 e1c1 a8d8 d1d7 d8d7 h1d1 e7e6 b5d7 f6d7 b3b8 d7b8 d1d8'},
+ {title:'不滅の対局',info:'Anderssen vs Kieseritzky, London 1851',w:'Adolf Anderssen',b:'Lionel Kieseritzky',
+  u:'e2e4 e7e5 f2f4 e5f4 f1c4 d8h4 e1f1 b7b5 c4b5 g8f6 g1f3 h4h6 d2d3 f6h5 f3h4 h6g5 h4f5 c7c6 g2g4 h5f6 h1g1 c6b5 h2h4 g5g6 h4h5 g6g5 d1f3 f6g8 c1f4 g5f6 b1c3 f8c5 c3d5 f6b2 f4d6 c5g1 e4e5 b2a1 f1e2 b8a6 f5g7 e8d8 f3f6 g8f6 d6e7'}
 ];
-const START="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
-const GLYPH={K:"♚",Q:"♛",R:"♜",B:"♝",N:"♞",P:"♟"};
-const sqi=s=>(8-+s[1])*8+"abcdefgh".indexOf(s[0]);
-function initial(){const b=[];for(const r of START.split("/"))for(const c of r)if(/\d/.test(c))for(let i=0;i<+c;i++)b.push(null);else b.push(c);return b}
-// 各手後の局面と指し手をあらかじめ計算
-function build(game){
-  const mv=game.m.split(" "),states=[initial()],hl=[null];let b=states[0];
-  for(const m of mv){
-    b=b.slice();const f=sqi(m.slice(0,2)),t=sqi(m.slice(2,4)),p=b[f];
-    if(p.toUpperCase()==="K"&&Math.abs(f-t)===2){const row=f-f%8;const rk=t>f?row+7:row,rt=t>f?t-1:t+1;b[rt]=b[rk];b[rk]=null}
-    if(p.toUpperCase()==="P"&&f%8!==t%8&&!b[t])b[f-f%8+t%8]=null;
-    b[t]=p;b[f]=null;
-    if(p.toUpperCase()==="P"&&(t<8||t>55))b[t]=p===p.toUpperCase()?"Q":"q";
-    states.push(b);hl.push([f,t]);
+const GLYPH = {k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
+
+const S = { sans: [], fens: [new Chess().fen()], moves: [], cur: 0, follow: true, white: null, black: null, info: '', mode: 'live', chan: 'Top Rated', over: false };
+const cache = new Map();
+const fkey = f => f.split(' ').slice(0, 4).join(' ');
+function getEval(i) {
+  const fen = S.fens[i]; if (!fen) return null;
+  const t = A.terminalEval(Chess, fen); if (t) return t;
+  return cache.get(fkey(fen)) || null;
+}
+const wpov = i => { const e = getEval(i); if (!e) return null; const l = e.lines[0]; const s = S.fens[i].split(' ')[1] === 'w' ? 1 : -1; return { cp: l.cp * s, mate: l.mate !== undefined ? (l.mate === 0 ? 0 : l.mate * s) : undefined, turn: s }; };
+const fmtEval = (e, i) => !e ? '…' : e.mate !== undefined ? (e.mate === 0 ? (e.turn === 1 ? '黒の勝ち(詰み)' : '白の勝ち(詰み)') : 'M' + Math.abs(e.mate)) : (e.cp >= 0 ? '+' : '') + (e.cp / 100).toFixed(1);
+
+// ---------- 解析エンジン (Stockfish を Web Worker で実行) ----------
+let worker = null, engineReady = false, engineFail = false, job = null, busy = false;
+async function initEngine() {
+  try {
+    const src = await (await fetch(SF_URL)).text();
+    worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    worker.onmessage = e => onEngine(String(e.data));
+    worker.postMessage('uci');
+  } catch (err) { engineFail = true; $('status').textContent = '解析エンジンを読み込めませんでした(ライブ観戦のみ)'; }
+}
+function onEngine(l) {
+  if (l === 'uciok') { worker.postMessage('setoption name MultiPV value 2'); worker.postMessage('isready'); }
+  else if (l === 'readyok') { engineReady = true; pump(); }
+  else if (job) {
+    const r = A.parseInfo(l); if (r) job.lines[r.mp] = r;
+    if (l.startsWith('bestmove')) { const j = job; job = null; j.resolve(Object.keys(j.lines).sort().map(k => j.lines[k])); }
   }
-  return{mv,states,hl};
 }
-let G,cur=0,timer=null,playing=true;
-const $=id=>document.getElementById(id);
-function render(){
-  const bd=$("board");bd.innerHTML="";
-  G.states[cur].forEach((p,i)=>{
-    const d=document.createElement("div");
-    d.className="sq "+(((i>>3)+i)%2?"d":"l")+(G.hl[cur]&&G.hl[cur].includes(i)?" hl":"");
-    if(p){d.textContent=GLYPH[p.toUpperCase()];d.classList.add(p===p.toUpperCase()?"w":"b")}
+const analyse = (fen, depth) => new Promise(resolve => { job = { resolve, lines: {} }; worker.postMessage('position fen ' + fen); worker.postMessage('go depth ' + depth); });
+function nextTodo() {
+  const D = +$('depth').value, n = S.fens.length;
+  const order = [S.cur, S.cur - 1]; for (let i = 0; i < n; i++) order.push(i);
+  for (const i of order) {
+    if (i < 0 || i >= n) continue;
+    if (A.terminalEval(Chess, S.fens[i])) continue;
+    const e = cache.get(fkey(S.fens[i])); if (!e || e.depth < D) return i;
+  }
+  return -1;
+}
+async function pump() {
+  if (busy || !engineReady) return; busy = true;
+  try {
+    for (let i; (i = nextTodo()) >= 0;) {
+      const fen = S.fens[i], D = +$('depth').value;
+      const lines = await analyse(fen, D);
+      if (lines.length) cache.set(fkey(fen), { depth: D, lines });
+      renderAnalysis();
+    }
+  } finally { busy = false; }
+}
+
+// ---------- 評価の表示 ----------
+function moveInfo(i) { // i: 1..n
+  const a = getEval(i - 1), b = getEval(i); if (!a || !b) return null;
+  const m = S.moves[i - 1], sac = A.isSacrifice(Chess, S.fens[i - 1], m);
+  return Object.assign({ move: m }, A.classifyMove(a, b, m, sac));
+}
+function uciToSan(fen, uci) { const g = new Chess(fen); const m = g.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] }); return m ? m.san : uci; }
+const COMMENT = {
+  brilliant: '駒を差し出しても評価が落ちない鋭い一手。「取られても大丈夫なのはなぜか?」を考えると勉強になります。',
+  great: 'ほぼ唯一の正解手。他の手だと評価が大きく下がる重要な局面でした。',
+  best: 'エンジンが選ぶ最善手です。', excellent: '最善に近い好手です。', good: '悪くない手です。',
+  inaccuracy: '少し損をした手。', mistake: '形勢を損ねるミス。', blunder: '一気に形勢を悪くする大悪手。'
+};
+function renderCoach() {
+  const el = $('coach'); const i = S.cur;
+  if (i === 0) { el.style.borderColor = '#444'; el.textContent = '開始局面。矢印キー(←→)で手を進められます。'; return; }
+  const mi = moveInfo(i), m = S.moves[i - 1], who = m.color === 'w' ? '白' : '黒';
+  const num = Math.ceil(i / 2) + (m.color === 'w' ? '.' : '...');
+  if (!mi) { el.style.borderColor = '#444'; el.textContent = `${num} ${m.san}(${who}) — 解析中…`; return; }
+  const L = A.LABELS[mi.key], e0 = wpov(i - 1), e1 = wpov(i);
+  let h = `<b class="k k-${mi.key}">${L.sym} ${L.name}</b>${num} ${m.san}(${who})<br>${COMMENT[mi.key]}`;
+  if (['inaccuracy', 'mistake', 'blunder'].includes(mi.key)) h += `<br>最善は <b>${uciToSan(S.fens[i - 1], mi.bestUci)}</b> でした(勝率 ${mi.wBest.toFixed(0)}% → ${mi.wAfter.toFixed(0)}%)。`;
+  h += `<br><span style="color:var(--muted)">評価(白視点): ${fmtEval(e0)} → ${fmtEval(e1)}</span>`;
+  el.innerHTML = h; el.style.borderColor = getComputedStyle(document.documentElement).getPropertyValue('--accent');
+}
+function renderAnalysis() {
+  const n = S.moves.length, loss = { w: [], b: [] }, infos = [];
+  for (let i = 1; i <= n; i++) { const mi = moveInfo(i); infos[i] = mi; if (mi) loss[S.moves[i - 1].color].push(mi.loss); }
+  document.querySelectorAll('#moves .m').forEach(el => {
+    const mi = infos[+el.dataset.i], sy = el.querySelector('.sy'); if (!mi) return;
+    el.className = 'm' + (+el.dataset.i === S.cur ? ' cur' : '');
+    sy.className = 'sy s-' + mi.key; sy.textContent = ' ' + A.LABELS[mi.key].sym;
+  });
+  const fa = a => { const v = A.accuracy(a); return v === null ? '–' : v.toFixed(0) + '%'; };
+  $('acc').innerHTML = `<span>白の正確度 <b>${fa(loss.w)}</b></span><span>黒の正確度 <b>${fa(loss.b)}</b></span><span>${engineFail ? '' : '解析済み ' + infos.filter(Boolean).length + '/' + n + '手'}</span>`;
+  drawGraph(); renderCoach(); renderBoard(infos[S.cur]);
+  const e = wpov(S.cur); $('barw').style.height = (e ? A.winPct(e.cp) : 50) + '%';
+  $('barw').title = fmtEval(e);
+}
+function drawGraph() {
+  const n = S.fens.length, pts = [];
+  for (let i = 0; i < n; i++) { const e = wpov(i); pts.push(e ? A.winPct(e.cp) : null); }
+  const x = i => n > 1 ? i / (n - 1) * 400 : 0, y = v => 70 - v * 0.7;
+  let d = ''; pts.forEach((v, i) => { if (v !== null) d += (d && pts[i - 1] !== null ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); });
+  $('graph').innerHTML = `<line x1="0" x2="400" y1="35" y2="35" stroke="#444"/><path d="${d}" fill="none" stroke="#e5b93c" stroke-width="2"/><line x1="${x(S.cur)}" x2="${x(S.cur)}" y1="0" y2="70" stroke="#fff" opacity=".5"/>`;
+}
+
+// ---------- 盤面 ----------
+function renderBoard(mi) {
+  const g = new Chess(S.fens[S.cur]), bd = $('board'); bd.innerHTML = '';
+  const last = S.cur > 0 ? S.moves[S.cur - 1] : null;
+  const bm = mi && ['inaccuracy', 'mistake', 'blunder'].includes(mi.key) ? [mi.bestUci.slice(0, 2), mi.bestUci.slice(2, 4)] : [];
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const name = 'abcdefgh'[c] + (8 - r), p = g.get(name), d = document.createElement('div');
+    d.className = 'sq ' + ((r + c) % 2 ? 'd' : 'l') + (last && (name === last.from || name === last.to) ? ' hl' : '') + (bm.includes(name) ? ' bm' : '');
+    if (p) { const s = document.createElement('span'); s.className = 'p ' + p.color; s.textContent = GLYPH[p.type]; d.appendChild(s); }
+    if (mi && last && name === last.to && A.LABELS[mi.key].sym) { const b = document.createElement('div'); b.className = 'badge k-' + mi.key; b.textContent = A.LABELS[mi.key].sym; d.appendChild(b); }
     bd.appendChild(d);
-  });
-  document.querySelectorAll("#moves span[data-i]").forEach(s=>s.classList.toggle("cur",+s.dataset.i===cur));
-  const c=document.querySelector("#moves .cur");if(c)c.scrollIntoView({block:"nearest"});
-  $("status").textContent=cur===G.mv.length?"終局":cur===0?"開始局面":`${Math.ceil(cur/2)}手目 ${cur%2?"白":"黒"}`;
+  }
 }
-function load(i){
-  stop();G=build(GAMES[i]);cur=0;$("info").textContent=GAMES[i].info;
-  const m=$("moves");m.innerHTML="";
-  G.mv.forEach((x,k)=>{
-    if(k%2===0){const n=document.createElement("span");n.className="num";n.textContent=k/2+1+".";m.appendChild(n)}
-    const s=document.createElement("span");s.dataset.i=k+1;s.textContent=x;s.onclick=()=>{stop();cur=k+1;render()};m.appendChild(s);
-  });
-  render();if(playing)start();
+const pname = p => !p ? '—' : `<span><span class="t">${p.title || ''}</span>${p.name}</span><span class="r">${p.rating || ''}</span>`;
+function renderMeta() {
+  $('pbot').innerHTML = pname(S.white); $('ptop').innerHTML = pname(S.black);
+  $('info').textContent = S.info;
+  const live = S.mode === 'live' && !S.over; $('live').className = 'live' + (live ? '' : ' off'); $('live').textContent = live ? 'LIVE' : S.mode === 'live' ? '終局' : '名局';
 }
-function step(d){cur=Math.max(0,Math.min(G.mv.length,cur+d));render()}
-function start(){stop();playing=true;$("play").textContent="⏸";timer=setInterval(()=>{if(cur>=G.mv.length){const n=($("game").selectedIndex+1)%GAMES.length;$("game").selectedIndex=n;load(n)}else step(1)},+$("speed").value)}
-function stop(){clearInterval(timer);timer=null;$("play").textContent="▶️"}
-GAMES.forEach((g,i)=>$("game").add(new Option(g.title,i)));
-$("game").onchange=e=>load(+e.target.value);
-$("speed").onchange=()=>{if(timer)start()};
-$("play").onclick=()=>{timer?(stop(),playing=false):start()};
-$("first").onclick=()=>{stop();playing=false;cur=0;render()};
-$("last").onclick=()=>{stop();playing=false;cur=G.mv.length;render()};
-$("prev").onclick=()=>{stop();playing=false;step(-1)};
-$("next").onclick=()=>{stop();playing=false;step(1)};
-load(0);
+function renderMoves() {
+  const m = $('moves'); m.innerHTML = '';
+  S.sans.forEach((s, k) => {
+    if (k % 2 === 0) { const n = document.createElement('span'); n.className = 'num'; n.textContent = k / 2 + 1 + '.'; m.appendChild(n); }
+    const e = document.createElement('span'); e.className = 'm' + (k + 1 === S.cur ? ' cur' : ''); e.dataset.i = k + 1;
+    e.innerHTML = s + '<span class="sy"></span>'; e.onclick = () => go(k + 1, true); m.appendChild(e);
+  });
+}
+function go(i, user) {
+  S.cur = Math.max(0, Math.min(S.moves.length, i));
+  if (user) S.follow = S.mode === 'live' && S.cur === S.moves.length;
+  document.querySelectorAll('#moves .m').forEach(el => el.classList.toggle('cur', +el.dataset.i === S.cur));
+  const c = document.querySelector('#moves .cur'); if (c) c.scrollIntoView({ block: 'nearest' });
+  renderAnalysis(); pump();
+}
+function setGame(sans, meta) {
+  Object.assign(S, meta, { sans });
+  const p = A.buildPositions(Chess, sans); S.fens = p.fens; S.moves = p.moves;
+  renderMeta(); renderMoves();
+  go(S.follow ? sans.length : Math.min(S.cur, sans.length));
+}
+
+// ---------- ライブ (lichess TV) ----------
+let liveToken = 0;
+const jget = async url => { const r = await fetch(url, { headers: { Accept: 'application/json' } }); if (!r.ok) throw new Error(r.status); return r.json(); };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const player = p => p && p.user ? { name: p.user.name, title: p.user.title, rating: p.rating } : { name: p && p.aiLevel ? 'Stockfish Lv' + p.aiLevel : 'Anonymous', rating: p && p.rating };
+async function followLive(chan) {
+  const tok = ++liveToken;
+  S.mode = 'live'; S.chan = chan; S.follow = true; S.over = false;
+  document.querySelectorAll('#chan button').forEach(b => b.classList.toggle('on', b.dataset.k === chan));
+  $('classic').selectedIndex = -1;
+  let lastId = null;
+  while (tok === liveToken) {
+    try {
+      const chs = await jget(LI + '/api/tv/channels'), ch = chs[chan];
+      if (!ch) throw new Error('channel');
+      const id = ch.gameId;
+      if (id !== lastId) { lastId = id; S.over = false; S.follow = true; S.cur = 0; }
+      const g = await jget(`${LI}/game/export/${id}?moves=1&opening=1&clocks=0&evals=0`);
+      if (tok !== liveToken) return;
+      const sans = (g.moves || '').split(' ').filter(Boolean);
+      const over = !['created', 'started'].includes(g.status);
+      const res = g.winner ? (g.winner === 'white' ? '白の勝ち' : '黒の勝ち') : '引き分け';
+      setGame(sans, { white: player(g.players.white), black: player(g.players.black), over,
+        info: (g.opening ? g.opening.name + ' / ' : '') + (g.perf || '') + (over ? ' / 終局: ' + res + ' (' + g.status + ')' : '') });
+      $('status').textContent = '';
+      await sleep(over ? 4000 : 2000);
+    } catch (err) {
+      $('status').textContent = 'lichessに接続できません。再試行中…';
+      await sleep(5000);
+    }
+  }
+}
+
+// ---------- 名局 ----------
+function showClassic(i) {
+  liveToken++; const c = CLASSICS[i];
+  document.querySelectorAll('#chan button').forEach(b => b.classList.remove('on'));
+  S.mode = 'classic'; S.follow = false; S.over = true; S.cur = 0;
+  setGame(A.ucisToSans(Chess, c.u.split(' ')), { white: { name: c.w }, black: { name: c.b }, info: c.title + ' — ' + c.info });
+}
+
+// ---------- 初期化 ----------
+CHANNELS.forEach(([k, label]) => { const b = document.createElement('button'); b.dataset.k = k; b.textContent = label; b.onclick = () => followLive(k); $('chan').appendChild(b); });
+CLASSICS.forEach((c, i) => $('classic').add(new Option(c.title, i)));
+$('classic').onchange = e => showClassic(+e.target.value);
+$('first').onclick = () => go(0, true); $('prev').onclick = () => go(S.cur - 1, true);
+$('next').onclick = () => go(S.cur + 1, true); $('last').onclick = () => go(S.moves.length, true);
+$('golive').onclick = () => followLive(S.mode === 'live' ? S.chan : 'Top Rated');
+$('depth').onchange = () => pump();
+$('graph').onclick = e => { const r = e.currentTarget.getBoundingClientRect(); go(Math.round((e.clientX - r.left) / r.width * (S.fens.length - 1)), true); };
+document.addEventListener('keydown', e => { if (e.key === 'ArrowLeft') go(S.cur - 1, true); else if (e.key === 'ArrowRight') go(S.cur + 1, true); });
+renderMeta(); renderBoard(null);
+initEngine();
+followLive('Top Rated');
 </script>
 </body>
 </html>
