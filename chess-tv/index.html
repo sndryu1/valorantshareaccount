@@ -18,8 +18,8 @@ main{display:flex;flex-wrap:wrap;gap:16px;padding:16px;max-width:1100px;margin:a
 .boardwrap{display:flex;gap:6px}
 #bar{width:18px;background:#222;border:1px solid #444;position:relative;border-radius:3px;overflow:hidden;flex:none}
 #barw{position:absolute;left:0;right:0;bottom:0;background:#f4f4f4;transition:height .3s}
-#board{flex:1;aspect-ratio:1;display:grid;grid-template-columns:repeat(8,1fr);border:3px solid #333}
-.sq{position:relative;display:flex;align-items:center;justify-content:center;font-size:min(7.5vw,48px);line-height:1;user-select:none}
+#board{flex:1;aspect-ratio:1;display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);border:3px solid #333}
+.sq{position:relative;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;font-size:min(7.5vw,48px);line-height:1;user-select:none}
 .sq.l{background:var(--light)}.sq.d{background:var(--dark)}
 .sq.hl::before{content:"";position:absolute;inset:0;background:rgba(229,185,60,.5)}
 .sq.bm::before{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 4px #3bb273}
@@ -50,6 +50,16 @@ button.on{color:var(--accent)}
 #acc b{color:var(--fg);font-size:16px}
 #graph{width:100%;height:70px;background:#12151b;border-radius:6px;cursor:pointer}
 #status{font-size:12px;color:var(--muted)}
+.sq.sel::before{content:"";position:absolute;inset:0;background:rgba(80,160,255,.45)}
+.sq.tg::after{content:"";position:absolute;width:28%;height:28%;border-radius:50%;background:rgba(0,0,0,.28)}
+.sq.tg.cap::after{width:84%;height:84%;background:none;border:5px solid rgba(0,0,0,.28)}
+#board.play .sq{cursor:pointer}
+.box{background:#12151b;border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.box h3{margin:0;font-size:14px;color:var(--accent)}
+#promo{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:9}
+#promo div{background:var(--panel);padding:16px;border-radius:10px;display:flex;gap:8px}
+#promo button{font-size:40px;width:64px;height:64px;padding:0;background:var(--light);color:#111}
+.cblock+.cblock{margin-top:8px;padding-top:8px;border-top:1px solid #2a2e38}
 </style>
 </head>
 <body>
@@ -61,6 +71,14 @@ button.on{color:var(--accent)}
     <div class="player" id="pbot"></div>
   </div>
   <aside>
+    <div class="box">
+      <h3>自分で対局</h3>
+      <div class="row">
+        <select id="opp"><option value="0">AI 入門</option><option value="3">AI 初級</option><option value="8" selected>AI 中級</option><option value="14">AI 上級</option><option value="20">AI 最強</option><option value="human">2人で対戦</option></select>
+        <select id="color"><option value="w">白で</option><option value="b">黒で</option><option value="r">ランダム</option></select>
+        <button id="newgame">♟ 対局開始</button><button id="undo">↶ 待った</button>
+      </div>
+    </div>
     <div class="row chan" id="chan"></div>
     <div class="row"><select id="classic"></select><span style="color:var(--muted);font-size:12px">← 名局を見る</span></div>
     <div id="info"></div>
@@ -68,6 +86,7 @@ button.on{color:var(--accent)}
       <button id="first">⏮</button><button id="prev">◀</button><button id="next">▶</button><button id="last">⏭</button>
       <button id="golive">● ライブへ</button>
       <label style="font-size:13px">解析 <select id="depth"><option value="8">速い</option><option value="11" selected>標準</option><option value="14">深い</option></select></label>
+      <label style="font-size:13px"><input type="checkbox" id="showbest"> 最善手を表示</label>
     </div>
     <div id="coach">局面を選ぶと、ここに手の評価と解説が出ます。</div>
     <div id="acc"></div>
@@ -75,6 +94,7 @@ button.on{color:var(--accent)}
     <div id="moves"></div>
   </aside>
 </main>
+<div id="promo"><div></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 <script src="analysis.js"></script>
 <script>
@@ -102,24 +122,37 @@ const wpov = i => { const e = getEval(i); if (!e) return null; const l = e.lines
 const fmtEval = (e, i) => !e ? '…' : e.mate !== undefined ? (e.mate === 0 ? (e.turn === 1 ? '黒の勝ち(詰み)' : '白の勝ち(詰み)') : 'M' + Math.abs(e.mate)) : (e.cp >= 0 ? '+' : '') + (e.cp / 100).toFixed(1);
 
 // ---------- 解析エンジン (Stockfish を Web Worker で実行) ----------
-let worker = null, engineReady = false, engineFail = false, job = null, busy = false;
+let worker = null, engineReady = false, engineFail = false, job = null, busy = false, lock = Promise.resolve();
+// エンジンは1つなので、解析とAIの着手を順番に実行する
+const withEngine = fn => { const p = lock.then(fn); lock = p.catch(() => {}); return p; };
 async function initEngine() {
   try {
     const src = await (await fetch(SF_URL)).text();
     worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
     worker.onmessage = e => onEngine(String(e.data));
     worker.postMessage('uci');
-  } catch (err) { engineFail = true; $('status').textContent = '解析エンジンを読み込めませんでした(ライブ観戦のみ)'; }
+  } catch (err) { engineFail = true; $('status').textContent = '解析エンジンを読み込めませんでした(評価なし・AIはランダムに指します)'; }
 }
 function onEngine(l) {
   if (l === 'uciok') { worker.postMessage('setoption name MultiPV value 2'); worker.postMessage('isready'); }
   else if (l === 'readyok') { engineReady = true; pump(); }
   else if (job) {
     const r = A.parseInfo(l); if (r) job.lines[r.mp] = r;
-    if (l.startsWith('bestmove')) { const j = job; job = null; j.resolve(Object.keys(j.lines).sort().map(k => j.lines[k])); }
+    if (l.startsWith('bestmove')) { const j = job; job = null; j.resolve({ lines: Object.keys(j.lines).sort().map(k => j.lines[k]), best: l.split(' ')[1] }); }
   }
 }
-const analyse = (fen, depth) => new Promise(resolve => { job = { resolve, lines: {} }; worker.postMessage('position fen ' + fen); worker.postMessage('go depth ' + depth); });
+const runGo = (fen, go) => new Promise(resolve => { job = { resolve, lines: {} }; worker.postMessage('position fen ' + fen); worker.postMessage('go ' + go); });
+const analyse = (fen, depth) => runGo(fen, 'depth ' + depth).then(r => r.lines);
+// AIの着手: 強さ(Skill Level)を下げて指させ、終わったら解析用の設定に戻す
+async function engineMove(fen, level) {
+  if (!engineReady) { const ms = new Chess(fen).moves({ verbose: true }); const m = ms[Math.floor(Math.random() * ms.length)]; return m.from + m.to + (m.promotion || ''); }
+  return withEngine(async () => {
+    worker.postMessage('setoption name MultiPV value 1'); worker.postMessage('setoption name Skill Level value ' + level);
+    const r = await runGo(fen, 'movetime ' + (300 + level * 60));
+    worker.postMessage('setoption name Skill Level value 20'); worker.postMessage('setoption name MultiPV value 2');
+    return r.best;
+  });
+}
 function nextTodo() {
   const D = +$('depth').value, n = S.fens.length;
   const order = [S.cur, S.cur - 1]; for (let i = 0; i < n; i++) order.push(i);
@@ -135,7 +168,7 @@ async function pump() {
   try {
     for (let i; (i = nextTodo()) >= 0;) {
       const fen = S.fens[i], D = +$('depth').value;
-      const lines = await analyse(fen, D);
+      const lines = await withEngine(() => analyse(fen, D));
       if (lines.length) cache.set(fkey(fen), { depth: D, lines });
       renderAnalysis();
     }
@@ -155,17 +188,27 @@ const COMMENT = {
   best: 'エンジンが選ぶ最善手です。', excellent: '最善に近い好手です。', good: '悪くない手です。',
   inaccuracy: '少し損をした手。', mistake: '形勢を損ねるミス。', blunder: '一気に形勢を悪くする大悪手。'
 };
-function renderCoach() {
-  const el = $('coach'); const i = S.cur;
-  if (i === 0) { el.style.borderColor = '#444'; el.textContent = '開始局面。矢印キー(←→)で手を進められます。'; return; }
-  const mi = moveInfo(i), m = S.moves[i - 1], who = m.color === 'w' ? '白' : '黒';
+const BAD = ['inaccuracy', 'mistake', 'blunder'];
+function coachBlock(i) {
+  const mi = moveInfo(i), m = S.moves[i - 1];
+  const vsAi = S.mode === 'play' && S.vs === 'ai';
+  const who = vsAi ? (m.color === S.myColor ? 'あなた' : 'AI') : m.color === 'w' ? '白' : '黒';
   const num = Math.ceil(i / 2) + (m.color === 'w' ? '.' : '...');
-  if (!mi) { el.style.borderColor = '#444'; el.textContent = `${num} ${m.san}(${who}) — 解析中…`; return; }
-  const L = A.LABELS[mi.key], e0 = wpov(i - 1), e1 = wpov(i);
+  if (!mi) return `<div class="cblock">${num} ${m.san}(${who}) — ${engineFail ? '評価できません' : '解析中…'}</div>`;
+  const L = A.LABELS[mi.key];
   let h = `<b class="k k-${mi.key}">${L.sym} ${L.name}</b>${num} ${m.san}(${who})<br>${COMMENT[mi.key]}`;
-  if (['inaccuracy', 'mistake', 'blunder'].includes(mi.key)) h += `<br>最善は <b>${uciToSan(S.fens[i - 1], mi.bestUci)}</b> でした(勝率 ${mi.wBest.toFixed(0)}% → ${mi.wAfter.toFixed(0)}%)。`;
-  h += `<br><span style="color:var(--muted)">評価(白視点): ${fmtEval(e0)} → ${fmtEval(e1)}</span>`;
-  el.innerHTML = h; el.style.borderColor = getComputedStyle(document.documentElement).getPropertyValue('--accent');
+  if (BAD.includes(mi.key)) {
+    h += `<br>勝率 ${mi.wBest.toFixed(0)}% → ${mi.wAfter.toFixed(0)}%。`;
+    h += $('showbest').checked ? `最善は <b>${uciToSan(S.fens[i - 1], mi.bestUci)}</b> でした。` : 'もっと良い手がありました。どの手か考えてみよう。';
+  }
+  h += `<br><span style="color:var(--muted)">評価(白視点): ${fmtEval(wpov(i - 1))} → ${fmtEval(wpov(i))}</span>`;
+  return `<div class="cblock">${h}</div>`;
+}
+function renderCoach() {
+  const el = $('coach'), i = S.cur;
+  if (i === 0) { el.textContent = S.mode === 'play' ? '駒をクリックして動かしてください。1手ごとに評価が出ます。' : '開始局面。矢印キー(←→)で手を進められます。'; return; }
+  // 対局中は「自分の手」と「相手の手」の両方を並べて見せる
+  el.innerHTML = (S.mode === 'play' && i >= 2 ? [i - 1, i] : [i]).map(coachBlock).join('');
 }
 function renderAnalysis() {
   const n = S.moves.length, loss = { w: [], b: [] }, infos = [];
@@ -193,10 +236,16 @@ function drawGraph() {
 function renderBoard(mi) {
   const g = new Chess(S.fens[S.cur]), bd = $('board'); bd.innerHTML = '';
   const last = S.cur > 0 ? S.moves[S.cur - 1] : null;
-  const bm = mi && ['inaccuracy', 'mistake', 'blunder'].includes(mi.key) ? [mi.bestUci.slice(0, 2), mi.bestUci.slice(2, 4)] : [];
+  const bm = mi && $('showbest').checked && BAD.includes(mi.key) ? [mi.bestUci.slice(0, 2), mi.bestUci.slice(2, 4)] : [];
+  const flip = S.mode === 'play' && S.vs === 'ai' && S.myColor === 'b';
+  const tg = sel ? g.moves({ square: sel, verbose: true }) : [];
+  bd.classList.toggle('play', canMove());
   for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
-    const name = 'abcdefgh'[c] + (8 - r), p = g.get(name), d = document.createElement('div');
-    d.className = 'sq ' + ((r + c) % 2 ? 'd' : 'l') + (last && (name === last.from || name === last.to) ? ' hl' : '') + (bm.includes(name) ? ' bm' : '');
+    const name = 'abcdefgh'[flip ? 7 - c : c] + (flip ? r + 1 : 8 - r), p = g.get(name), d = document.createElement('div');
+    const t = tg.find(m => m.to === name);
+    d.className = 'sq ' + ((r + c) % 2 ? 'd' : 'l') + (last && (name === last.from || name === last.to) ? ' hl' : '') + (bm.includes(name) ? ' bm' : '')
+      + (name === sel ? ' sel' : '') + (t ? ' tg' + (t.captured ? ' cap' : '') : '');
+    d.onclick = () => onSquare(name);
     if (p) { const s = document.createElement('span'); s.className = 'p ' + p.color; s.textContent = GLYPH[p.type]; d.appendChild(s); }
     if (mi && last && name === last.to && A.LABELS[mi.key].sym) { const b = document.createElement('div'); b.className = 'badge k-' + mi.key; b.textContent = A.LABELS[mi.key].sym; d.appendChild(b); }
     bd.appendChild(d);
@@ -204,9 +253,11 @@ function renderBoard(mi) {
 }
 const pname = p => !p ? '—' : `<span><span class="t">${p.title || ''}</span>${p.name}</span><span class="r">${p.rating || ''}</span>`;
 function renderMeta() {
-  $('pbot').innerHTML = pname(S.white); $('ptop').innerHTML = pname(S.black);
+  const flip = S.mode === 'play' && S.vs === 'ai' && S.myColor === 'b';
+  $('pbot').innerHTML = pname(flip ? S.black : S.white); $('ptop').innerHTML = pname(flip ? S.white : S.black);
   $('info').textContent = S.info;
-  const live = S.mode === 'live' && !S.over; $('live').className = 'live' + (live ? '' : ' off'); $('live').textContent = live ? 'LIVE' : S.mode === 'live' ? '終局' : '名局';
+  const live = S.mode !== 'classic' && !S.over; $('live').className = 'live' + (live ? '' : ' off');
+  $('live').textContent = S.over ? (S.mode === 'classic' ? '名局' : '終局') : S.mode === 'play' ? (S.thinking ? 'AI思考中…' : '対局中') : 'LIVE';
 }
 function renderMoves() {
   const m = $('moves'); m.innerHTML = '';
@@ -218,7 +269,8 @@ function renderMoves() {
 }
 function go(i, user) {
   S.cur = Math.max(0, Math.min(S.moves.length, i));
-  if (user) S.follow = S.mode === 'live' && S.cur === S.moves.length;
+  if (user) S.follow = S.mode !== 'classic' && S.cur === S.moves.length;
+  sel = null;
   document.querySelectorAll('#moves .m').forEach(el => el.classList.toggle('cur', +el.dataset.i === S.cur));
   const c = document.querySelector('#moves .cur'); if (c) c.scrollIntoView({ block: 'nearest' });
   renderAnalysis(); pump();
@@ -237,7 +289,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const player = p => p && p.user ? { name: p.user.name, title: p.user.title, rating: p.rating } : { name: p && p.aiLevel ? 'Stockfish Lv' + p.aiLevel : 'Anonymous', rating: p && p.rating };
 async function followLive(chan) {
   const tok = ++liveToken;
-  S.mode = 'live'; S.chan = chan; S.follow = true; S.over = false;
+  playToken++; S.mode = 'live'; S.chan = chan; S.follow = true; S.over = false;
   document.querySelectorAll('#chan button').forEach(b => b.classList.toggle('on', b.dataset.k === chan));
   $('classic').selectedIndex = -1;
   let lastId = null;
@@ -265,13 +317,92 @@ async function followLive(chan) {
 
 // ---------- 名局 ----------
 function showClassic(i) {
-  liveToken++; const c = CLASSICS[i];
+  liveToken++; playToken++; const c = CLASSICS[i];
   document.querySelectorAll('#chan button').forEach(b => b.classList.remove('on'));
   S.mode = 'classic'; S.follow = false; S.over = true; S.cur = 0;
   setGame(A.ucisToSans(Chess, c.u.split(' ')), { white: { name: c.w }, black: { name: c.b }, info: c.title + ' — ' + c.info });
 }
 
+// ---------- 自分で対局 ----------
+let sel = null, playToken = 0;
+const LEVEL_NAME = { 0: '入門', 3: '初級', 8: '中級', 14: '上級', 20: '最強' };
+function canMove() {
+  if (S.mode !== 'play' || S.over || S.thinking || S.cur !== S.moves.length) return false;
+  return S.vs === 'human' || S.fens[S.cur].split(' ')[1] === S.myColor;
+}
+function onSquare(name) {
+  if (!canMove()) return;
+  const g = new Chess(S.fens[S.cur]), p = g.get(name);
+  if (sel && sel !== name) {
+    const ms = g.moves({ square: sel, verbose: true }).filter(m => m.to === name);
+    if (ms.length) {
+      const from = sel; sel = null;
+      if (ms.some(m => m.promotion)) askPromo(g.turn()).then(pr => playMove({ from, to: name, promotion: pr }));
+      else playMove({ from, to: name });
+      return;
+    }
+  }
+  sel = p && p.color === g.turn() && sel !== name ? name : null;
+  renderAnalysis();
+}
+function askPromo(color) {
+  return new Promise(resolve => {
+    const box = $('promo'), inner = box.firstElementChild; inner.innerHTML = '';
+    for (const t of ['q', 'r', 'b', 'n']) {
+      const b = document.createElement('button'); b.innerHTML = `<span class="${color}">${GLYPH[t]}</span>`;
+      b.onclick = () => { box.style.display = 'none'; resolve(t); }; inner.appendChild(b);
+    }
+    box.style.display = 'flex';
+  });
+}
+function resultText(g) {
+  if (g.in_checkmate()) return (g.turn() === 'w' ? '黒' : '白') + 'の勝ち(チェックメイト)';
+  if (g.in_stalemate()) return '引き分け(ステイルメイト)';
+  if (g.in_threefold_repetition()) return '引き分け(3回同形)';
+  if (g.insufficient_material()) return '引き分け(駒不足)';
+  return '引き分け(50手ルール)';
+}
+function applyMove(mv) {
+  const g = new Chess(S.fens[S.fens.length - 1]), m = g.move(mv);
+  if (!m) return false;
+  const over = g.game_over();
+  S.follow = true;
+  setGame(S.sans.concat(m.san), { over, info: over ? '終局: ' + resultText(g) : S.baseInfo });
+  return true;
+}
+function playMove(mv) { if (applyMove(mv) && S.vs === 'ai' && !S.over) aiTurn(); }
+async function aiTurn() {
+  const tok = playToken; S.thinking = true; renderMeta();
+  const uci = await engineMove(S.fens[S.fens.length - 1], S.level);
+  if (tok !== playToken) return;
+  S.thinking = false;
+  applyMove({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
+}
+function newGame() {
+  liveToken++; playToken++; sel = null;
+  document.querySelectorAll('#chan button').forEach(b => b.classList.remove('on')); $('classic').selectedIndex = -1;
+  const opp = $('opp').value, col = $('color').value;
+  S.mode = 'play'; S.vs = opp === 'human' ? 'human' : 'ai'; S.level = +opp || 0;
+  S.myColor = col === 'r' ? (Math.random() < .5 ? 'w' : 'b') : col;
+  S.over = false; S.thinking = false; S.cur = 0; S.follow = true;
+  const you = { name: 'あなた' }, ai = { name: 'Stockfish', title: 'AI', rating: LEVEL_NAME[S.level] };
+  S.baseInfo = S.vs === 'ai' ? `AI(${LEVEL_NAME[S.level]})と対局中。1手ごとに評価が出ます。` : '2人対戦(同じ画面で交互に指す)';
+  const meta = S.vs === 'ai' ? (S.myColor === 'w' ? { white: you, black: ai } : { white: ai, black: you }) : { white: { name: '白' }, black: { name: '黒' } };
+  setGame([], Object.assign(meta, { info: S.baseInfo }));
+  if (S.vs === 'ai' && S.myColor === 'b') aiTurn();
+}
+function undo() {
+  if (S.mode !== 'play' || S.thinking || !S.sans.length) return;
+  const turn = S.fens[S.fens.length - 1].split(' ')[1];
+  const n = S.vs === 'ai' && turn === S.myColor ? 2 : 1;
+  S.follow = true; S.over = false; sel = null;
+  setGame(S.sans.slice(0, Math.max(0, S.sans.length - n)), { info: S.baseInfo });
+  if (S.vs === 'ai' && S.fens[S.fens.length - 1].split(' ')[1] !== S.myColor) aiTurn();
+}
+
 // ---------- 初期化 ----------
+$('newgame').onclick = newGame; $('undo').onclick = undo;
+$('showbest').onchange = () => renderAnalysis();
 CHANNELS.forEach(([k, label]) => { const b = document.createElement('button'); b.dataset.k = k; b.textContent = label; b.onclick = () => followLive(k); $('chan').appendChild(b); });
 CLASSICS.forEach((c, i) => $('classic').add(new Option(c.title, i)));
 $('classic').onchange = e => showClassic(+e.target.value);
